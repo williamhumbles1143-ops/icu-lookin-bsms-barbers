@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><script>
+(function(){
+  const hashParams=new URLSearchParams(location.hash.replace(/^#/,""));
+  const queryParams=new URLSearchParams(location.search);
+  const recoveryIntent=
+    hashParams.get("type")==="recovery" ||
+    queryParams.get("type")==="recovery" ||
+    queryParams.has("code") ||
+    (hashParams.has("access_token") && hashParams.has("refresh_token"));
+  if(recoveryIntent && !/PASSWORD_RESET\.html$/i.test(location.pathname)){
+    location.replace("PASSWORD_RESET.html"+location.search+location.hash);
+  }
+})();
+</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mon Barber App | ICU Lookin</title><link rel="icon" type="image/png" href="assets/icons/mon.png"></head><body><p>Verifying Mon Barber App access…</p><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/supabase-config.js"></script><script src="assets/supabase-auth.js"></script><script>(async()=>{try{const cur=await ICUAuth.requireBarber("Mon");if(!cur||cur.identity.must_change_password){location.replace("BARBER_LAUNCHER.html?barber=Mon");return}sessionStorage.setItem("icuAppMode","individual");sessionStorage.setItem("icuBarberName","Mon");location.replace("BSMS_APP.html?app=individual&barber=Mon#barber-dashboard")}catch(_){location.replace("BARBER_LAUNCHER.html?barber=Mon")}})();</script></body></html>

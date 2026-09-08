@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><script>
+(function(){
+  const hashParams=new URLSearchParams(location.hash.replace(/^#/,""));
+  const queryParams=new URLSearchParams(location.search);
+  const recoveryIntent=
+    hashParams.get("type")==="recovery" ||
+    queryParams.get("type")==="recovery" ||
+    queryParams.has("code") ||
+    (hashParams.has("access_token") && hashParams.has("refresh_token"));
+  if(recoveryIntent && !/PASSWORD_RESET\.html$/i.test(location.pathname)){
+    location.replace("PASSWORD_RESET.html"+location.search+location.hash);
+  }
+})();
+</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Selena Barber App | ICU Lookin</title></head><body><p>Selena’s secure account setup is pending.</p><p><a href="BARBER_LAUNCHER.html">Return to Barber Launcher</a></p></body></html>

@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head><script>
+(function(){
+  const hashParams=new URLSearchParams(location.hash.replace(/^#/,""));
+  const queryParams=new URLSearchParams(location.search);
+  const recoveryIntent=
+    hashParams.get("type")==="recovery" ||
+    queryParams.get("type")==="recovery" ||
+    queryParams.has("code") ||
+    (hashParams.has("access_token") && hashParams.has("refresh_token"));
+  if(recoveryIntent && !/PASSWORD_RESET\.html$/i.test(location.pathname)){
+    location.replace("PASSWORD_RESET.html"+location.search+location.hash);
+  }
+})();
+</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>ICU Barber Studio</title>
+  <meta name="description" content="Customer booking, owner management, and private barber apps for ICU Barber Studio.">
+  <link rel="icon" type="image/png" href="assets/icons/customer.png">
+  <link rel="stylesheet" href="assets/style.css">
+
+<script id="appModeIsolationGuard">
+(function(){
+  function safeGet(k){try{return sessionStorage.getItem(k)}catch(_){return null}}
+  var params=new URLSearchParams(location.search),hash=(location.hash||"").replace("#",""),mode=params.get("app")||safeGet("icuAppMode");
+  if(mode!=="owner"&&mode!=="individual"&&mode!=="customer"){if(hash==="owner"||hash.indexOf("owner-")===0)mode="owner";else if(hash.indexOf("barber-")===0)mode="individual";else mode="customer"}
+  document.documentElement.setAttribute("data-app-mode",mode);window.__ICU_EARLY_MODE__=mode;
+  if(mode==="owner"){var workspace=safeGet("icuOwnerWorkspaceV1")||params.get("workspace")||"home";if(!["management","tony","home"].includes(workspace))workspace="home";document.documentElement.setAttribute("data-owner-workspace",workspace)}
+  if(mode!=="customer")document.documentElement.style.visibility="hidden";
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-config.js"></script>
+<script src="assets/supabase-auth.js"></script>
+<script src="assets/supabase-data.js"></script>
+<script id="staffAuthGuard">
+(async function(){
+  var mode=window.__ICU_EARLY_MODE__;if(mode==="customer")return;
+  try{
+    if(!window.ICUAuth)throw new Error("Authentication service unavailable");
+    var params=new URLSearchParams(location.search),cur;
+    if(mode==="owner"){cur=await ICUAuth.requireOwner();if(!cur||cur.identity.must_change_password){location.replace("BARBER_LAUNCHER.html");return}}
+    else{var barber=params.get("barber")||sessionStorage.getItem("icuBarberName")||"";cur=await ICUAuth.requireBarber(barber);if(!cur||cur.identity.must_change_password){location.replace("BARBER_LAUNCHER.html?barber="+encodeURIComponent(barber));return}}
+    document.documentElement.style.visibility="visible";
+  }catch(err){location.replace(mode==="owner"?"BARBER_LAUNCHER.html":"BARBER_LAUNCHER.html")}
+})();
+</script>
+
+</head>
+<body>
+<header class="topbar">
+  <a href="#" class="brand" id="brandHome">
+    <img class="brand-logo" src="assets/icu-lookin-logo.jpeg" alt="ICU Barber Studio logo">
+    <span class="brand-copy"><strong>ICU Barber Studio</strong><small id="appSubtitle">Customer Booking App</small></span>
+  </a>
+
+  <div id="customerHeader" class="app-label"><strong>Customer Portal</strong></div>
+  <div id="barberNotification" class="barber-notification individual-only management-only hidden" title="New appointments since your last visit"><span id="barberNotificationCount">0</span></div>
+  <button id="menuButton" class="menu-button" type="button" aria-expanded="false">Menu</button>
+
+  <nav id="customerNav" class="customer-only">
+    <a href="#book" data-view-link="book">Book</a>
+    <a href="#customer-profile" data-view-link="customer-profile">My Profile</a>
+    <a href="#customer-loyalty" data-view-link="customer-loyalty">Loyalty</a>
+    <a href="#customer-gifts" data-view-link="customer-gifts">Gift Cards</a>
+  </nav>
+
+  <nav id="ownerNav" class="management-only owner-only">
+    <a class="owner-mobile-primary" href="#owner-dashboard" data-view-link="owner-dashboard">Dashboard</a>
+    <a class="owner-mobile-primary owner-mobile-appts" href="#owner-appointments" data-view-link="owner-appointments"><span class="owner-label-desktop">Appointments</span><span class="owner-label-mobile">Appts</span></a>
+    <a href="#owner-pricing" data-view-link="owner-pricing">Pricing</a>
+    <a href="#owner-revenue" data-view-link="owner-revenue">Revenue</a>
+    <a href="#owner-analytics" data-view-link="owner-analytics">Analytics</a>
+    <a href="#owner-performance" data-view-link="owner-performance">Performance</a>
+    <a href="#owner-inventory" data-view-link="owner-inventory">Inventory</a>
+    <a href="#owner-marketing" data-view-link="owner-marketing">Marketing</a>
+    <a href="#owner-financials" data-view-link="owner-financials">Financials</a>
+    <a href="#owner-locations" data-view-link="owner-locations">Locations</a>
+    <a href="#owner-assistant" data-view-link="owner-assistant">Assistant</a>
+    <a href="#owner-customers" data-view-link="owner-customers">Customers</a>
+    <a class="owner-mobile-primary owner-mobile-ops" href="#owner-operations" data-view-link="owner-operations"><span class="owner-label-desktop">Operations</span><span class="owner-label-mobile">Ops</span> <span id="ownerOperationsNavBadge" class="nav-badge hidden">0</span></a>
+    <a href="#owner-workforce" data-view-link="owner-workforce">Workforce</a>
+    <a href="#owner-booth-rent" data-view-link="owner-booth-rent">Booth Rent</a>
+    <a href="#owner-payments" data-view-link="owner-payments">Payments</a>
+    <a href="#owner-messages" data-view-link="owner-messages">Messages <span id="ownerMessageNavBadge" class="nav-badge hidden">0</span></a><a href="#account-security" data-view-link="account-security">Account &amp; Security</a>
+  <a href="#owner-control-center" data-view-link="owner-control-center">Control Center</a><a href="#owner-barber-management" data-view-link="owner-barber-management">Barber Management</a><a href="#owner-diary" data-view-link="owner-diary">Owner Diary</a><a href="#owner-incidents" data-view-link="owner-incidents">Incident Reports</a><a href="#owner-inspections" data-view-link="owner-inspections">Inspections</a><a href="#owner-inspection-issues" data-view-link="owner-inspection-issues">Inspection Issues</a><a href="#owner-checklists" data-view-link="owner-checklists">Checklists</a><a href="#owner-documents" data-view-link="owner-documents">Document Center</a><a href="#owner-cameras" data-view-link="owner-cameras">Shop Cameras</a><a href="#owner-growth" data-view-link="owner-growth">Growth & Marketing</a><a href="#owner-reports" data-view-link="owner-reports">Business Reports</a><a href="#owner-audit" data-view-link="owner-audit">Audit History</a><a href="#owner-backup" data-view-link="owner-backup">Backup / Export</a><a href="#owner-health" data-view-link="owner-health">System Health</a><a href="#owner-guide" data-view-link="owner-guide">Owner Guide</a><a class="owner-exit-link" href="BARBER_LAUNCHER.html">Exit / Return to Owner Launcher</a><button id="ownerMoreButton" class="owner-more-button" type="button" aria-expanded="false">More ▾</button></nav>
+
+  <nav id="barberNav" class="management-only individual-only">
+    <a class="mobile-primary" href="#barber-dashboard" data-view-link="barber-dashboard">Dashboard</a>
+    <a class="mobile-primary mobile-appts" href="#barber-appointments" data-view-link="barber-appointments">Appointments <span id="barberAppointmentNavBadge" class="nav-badge hidden">0</span></a>
+    <a href="#barber-walkins" data-view-link="barber-walkins">Walk-Ins <span id="barberWalkinNavBadge" class="nav-badge hidden">0</span></a>
+    <a href="#barber-calendar" data-view-link="barber-calendar">Calendar</a>
+    <a href="#barber-clientele" data-view-link="barber-clientele">Clientele</a>
+    <a href="#barber-services" data-view-link="barber-services">My Services</a>
+    <a href="#barber-prices" data-view-link="barber-prices">My Prices</a>
+    <a href="#barber-deposits" data-view-link="barber-deposits">Deposits</a>
+    <a href="#barber-revenue" data-view-link="barber-revenue">Revenue</a>
+    <a href="#barber-analytics" data-view-link="barber-analytics">Analytics</a>
+    <a href="#barber-client-tools" data-view-link="barber-client-tools">Client Tools</a>
+    <a class="mobile-primary mobile-avail" href="#barber-availability" data-view-link="barber-availability">Availability</a>
+    
+    <a href="#barber-pos" data-view-link="barber-pos">POS / Checkout</a>
+    <a href="#barber-social" data-view-link="barber-social">Social Content</a>
+    <a href="#barber-marketing" data-view-link="barber-marketing">Marketing</a>
+    <a href="#barber-reviews" data-view-link="barber-reviews">Reviews</a>
+    <a href="#barber-client-messages" data-view-link="barber-client-messages">Client Messages</a>
+    <a href="#barber-messages" data-view-link="barber-messages">Messages <span id="barberMessageNavBadge" class="nav-badge hidden">0</span></a><a href="#account-security" data-view-link="account-security">Account &amp; Security</a>
+  <button id="barberSignOutButton" class="barber-signout-button" type="button">Sign Out</button>
+  <a class="barber-exit-link" href="BARBER_LAUNCHER.html">Exit / Return to Barber Launcher</a>
+  <button id="barberMoreButton" class="barber-more-button" type="button" aria-expanded="false">More ▾</button>
+  </nav>
+</header>
+  <div id="ownerWorkspaceBar" class="owner-workspace-bar hidden">
+    <button id="ownerWorkspaceBack" class="button secondary" type="button">← Back</button>
+    <button id="ownerWorkspaceHome" class="button secondary" type="button">Dashboard / Switch Role</button>
+    <span id="ownerWorkspaceLabel"></span><button id="ownerSignOutButton" class="button secondary" type="button">Sign Out</button>
+  </div>
+  <div id="customerNavigationBar" class="customer-navigation-bar hidden">
+    <button id="customerBackButton" class="button secondary" type="button">← Back</button>
+    <span id="customerSessionStatus" class="customer-session-status"></span>
+    <button id="customerSignOutButton" class="button secondary hidden" type="button">Sign Out</button>
+    <a id="customerExitButton" class="button danger" href="index.html">Exit Booking</a>
+  </div>
+
+
+<main class="shell">
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <section id="view-book" data-qr-scope="customerBookingQrPlacement" class="view">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Houston barber booking</p>
+        <h1>Book your next appointment.</h1>
+        <p class="lede">Choose your barber first so the correct services and barber-specific prices appear.</p>
+      </div>
+      <aside class="hours-card">
+        <img class="hours-logo" src="assets/icu-lookin-logo.jpeg" alt="ICU Barber Studio logo">
+        <div>
+          <small>Normal shop hours</small>
+          <strong>9:00 AM–7:00 PM</strong>
+          <em>After-hours appointments available through 9:00 PM</em>
+        </div>
+      </aside>
+    </div>
+
+    <form id="bookingForm" class="booking-layout" novalidate>
+      <div class="form-column">
+        <fieldset class="panel">
+          <legend><span>1</span> Customer information</legend>
+          <div class="field-grid">
+            <label>First name <b>*</b><input id="firstName" type="text" placeholder="First name" required></label>
+            <label>Last name <b>*</b><input id="lastName" type="text" placeholder="Last name" required></label>
+            <label>Phone <b>*</b><input id="phone" type="tel" inputmode="numeric" maxlength="14" placeholder="(555) 555-5555" required></label>
+            <label>Email <span class="optional-label">Optional</span><input id="email" type="email" list="emailDomainSuggestions" placeholder="name@example.com"><datalist id="emailDomainSuggestions"></datalist></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="panel">
+          <legend><span>2</span> Select barber and date</legend>
+          <p class="help">Kody's dreadlock services appear only after Kody is selected.</p>
+          <div class="field-grid">
+            <label>Barber <b>*</b>
+              <select id="barber">
+                <option value="">Select a barber</option>
+                <option>Tony</option><option>Mike</option><option>Will</option><option>Henry</option>
+                <option>Mon</option><option>Kody</option><option>Selena</option>
+              </select>
+            </label>
+            <label>Date <b>*</b><input id="date" type="date"></label>
+          </div>
+          <section id="barberPortfolioPrompt" class="barber-portfolio-prompt hidden" aria-live="polite">
+            <div><strong id="barberPortfolioPromptTitle">See some of your barber’s work</strong><p id="barberPortfolioPromptText">View selected photos and videos before choosing your service.</p></div>
+            <button id="openBarberPortfolio" class="button secondary" type="button">View Portfolio</button>
+          </section>
+          <div id="bookingDepositNotice" class="deposit-notice hidden"></div>
+        </fieldset>
+
+        <fieldset class="panel">
+          <legend><span>3</span> Services</legend>
+          <p class="help">Prices shown are the selected barber's current prices.</p>
+          <div id="serviceList" class="service-list"></div>
+        </fieldset>
+
+        <fieldset class="panel">
+          <legend><span>4</span> Available time</legend>
+          <label>Available time <b>*</b>
+            <select id="time" disabled><option value="">Select a barber, date, and services first</option></select>
+          </label>
+          <div id="availabilityMessage" class="notice">Available times will appear after you select a barber, date, and services.</div>
+        </fieldset>
+
+        <fieldset class="panel">
+          <legend><span>5</span> Notes</legend>
+          <label>How did you hear about ICU Lookin?<select id="howHeard"><option value="">Select</option><option>Google</option><option>Facebook</option><option>Instagram</option><option>TikTok</option><option>YouTube</option><option>Referral</option><option>Walk-by / Sign</option><option>QR Code</option><option>Event</option><option>Other</option></select></label><label>Appointment notes<textarea id="notes" rows="4" placeholder="Optional request or instructions"></textarea></label>
+        </fieldset>
+
+        <section id="mobileSummary" class="panel mobile-summary"></section>
+        <button id="reviewButton" class="button primary large" type="button">Review appointment</button>
+      </div>
+
+      <aside class="summary-card">
+        <div class="summary-head"><img src="assets/icu-lookin-logo.jpeg" alt=""><div><small>Current selections</small><strong>Appointment summary</strong></div></div>
+<div class="customer-qr-card">
+  <strong>Scan to Book</strong>
+  <div class="qr-placeholder-box customer-qr-small">QR</div>
+  <span class="help">The permanent booking QR will activate when the public booking URL is finalized.</span>
+</div>
+
+        <div id="summaryContent" class="summary-body"></div>
+      </aside>
+    </form>
+
+    <section id="reviewPanel" class="review-panel hidden">
+      <p class="eyebrow">Review appointment</p><h2>Confirm these details</h2>
+      <div id="reviewDetails"></div>
+      <div id="depositCheckout" class="deposit-checkout hidden">
+        <div class="deposit-policy"><strong id="depositCheckoutTitle">Non-Refundable Deposit Required</strong><p id="depositCheckoutText"></p></div>
+        <label class="acknowledgement"><input id="depositAcknowledgement" type="checkbox"> <span id="depositAcknowledgementText">I understand this deposit is non-refundable and will be applied toward my appointment balance.</span></label>
+        <label>Payment method
+          <select id="depositPaymentMethod"><option>Card</option><option>Cash App</option><option>Zelle</option><option>Other</option></select>
+        </label>
+        <p class="help">No card or bank information is collected or stored until a PCI-compliant payment processor is connected.</p>
+      </div>
+      <div class="dialog-actions">
+        <button id="editButton" class="button secondary" type="button">Go back and edit</button>
+        <button id="confirmButton" class="button primary" type="button">Confirm booking</button>
+      </div>
+    </section>
+
+    <section id="successPanel" class="review-panel hidden">
+      <div class="success">✓</div><h2>Appointment confirmed</h2>
+      <div id="successDetails"></div>
+      <button id="newBookingButton" class="button primary" type="button">Book another appointment</button>
+    </section>
+  </section>
+
+
+
+  <section id="view-customer-profile" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Customer account</p><h1>My Profile</h1><p>Appointment history, preferences, family members, and saved information.</p></div></div>
+
+    <section id="customerProfileLookup" class="panel lookup"><label>Email address or phone number<div class="lookup-row"><input id="customerProfileEmail" type="text" placeholder="(555) 555-5555 or name@example.com"><button id="loadCustomerProfile" class="button primary" type="button">Load profile</button></div></label><p class="help">Phone searches accept digits or the format (###) ###-####.</p></section>
+    <div id="customerProfileContent"></div>
+  </section>
+
+  <section id="view-customer-loyalty" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Rewards and memberships</p><h1>Loyalty</h1><p>Track visits, reward points, memberships, referrals, and rebooking.</p></div></div>
+    <section id="loyaltyLookup" class="panel lookup"><label>Account email<div class="lookup-row"><input id="loyaltyEmail" type="email" placeholder="name@example.com"><button id="loadLoyalty" class="button primary" type="button">View rewards</button></div></label></section>
+    <div id="loyaltyContent"></div>
+  </section>
+
+  <section id="view-customer-gifts" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Customer wallet</p><h1>Gift Cards</h1><p>Create a gift card or check a saved balance.</p></div></div>
+    <div class="dashboard-layout"><section class="panel"><h2>Purchase gift card</h2><div class="field-grid"><label>Recipient<input id="giftRecipient" placeholder="Recipient name"></label><label>Amount<select id="giftAmount"><option value="2500">$25</option><option value="5000">$50</option><option value="7500">$75</option><option value="10000">$100</option></select></label></div><label>Recipient email<input id="giftEmail" type="email" placeholder="recipient@example.com"></label><button id="createGiftCard" class="button primary" type="button">Create gift card</button></section><section class="panel"><h2>Check balance</h2><label>Gift-card code<input id="giftCode" placeholder="ICU-XXXXXX"></label><button id="checkGiftCard" class="button secondary" type="button">Check balance</button><div id="giftBalanceResult" class="notice hidden"></div></section></div>
+  </section>
+
+  <section id="view-owner-dashboard" class="view hidden"><div id="ownerRoleButtons" class="role-card-grid"><button class="role-card owner-role-card" data-owner-role-choice="management" type="button"><strong>Owner / Shop Management</strong><span>Manage ICU Lookin</span></button><button class="role-card owner-role-card" data-owner-role-choice="tony" type="button"><strong>Tony the Barber</strong><span>Open My Barber Tools</span></button></div><div id="ownerAlertStrip" class="owner-alert-strip"></div>
+    <div class="page-heading"><div><p class="eyebrow">Owner command center</p><h1>Shop Dashboard</h1><p>A single view of today's operations, revenue, staffing, and exceptions.</p></div></div>
+    <div id="ownerDashboardCards" class="stat-grid dashboard-grid"></div>
+    <div class="dashboard-layout">
+      <section class="panel"><div class="section-heading-row"><h2>Today's timeline</h2><span id="dashboardDateLabel"></span></div><div id="ownerDashboardSchedule" class="mini-schedule"></div></section>
+      <section class="panel"><div class="section-heading-row"><h2>Attention needed</h2><span>Live operations</span></div><div id="ownerAlerts" class="alert-list"></div></section>
+    </div>
+    <div class="dashboard-layout">
+      <section class="panel"><h2>Barber snapshot</h2><div id="ownerBarberSnapshot" class="snapshot-list"></div></section>
+      <section class="panel"><h2>Quick actions</h2><div class="quick-actions">
+        <button class="button secondary" type="button" data-owner-jump="owner-appointments">Manage appointments</button>
+        <button class="button secondary" type="button" data-owner-jump="owner-inventory">Review inventory</button>
+        <button class="button secondary" type="button" data-owner-jump="owner-marketing">Find overdue customers</button>
+        <button class="button secondary" type="button" data-owner-jump="owner-financials">Review profit</button>
+      </div></section>
+    </div>
+  </section>
+
+  <section id="view-barber-dashboard" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private barber workspace</p><h1 id="barberDashboardTitle">My Dashboard</h1><p>Today's schedule, revenue, next customer, and performance at a glance.</p></div></div>
+    <div id="barberDashboardCards" class="stat-grid dashboard-grid"></div>
+    <div class="dashboard-layout">
+      <section class="panel"><h2>Next appointment</h2><div id="barberNextAppointment"></div></section>
+      <section class="panel"><h2>Today's progress</h2><div id="barberDayProgress"></div></section>
+    </div>
+    <section class="panel"><h2>Today's appointment list</h2><div id="barberDashboardSchedule" class="mini-schedule"></div></section>
+  </section>
+
+  <section id="view-owner-appointments" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Owner App</p><h1>All appointments</h1><p>View and manage every barber's schedule.</p></div></div>
+    <section class="panel filters">
+      <label>Barber<select id="ownerAppointmentBarber"><option value="">All barbers</option></select></label>
+      <label>Date<input id="ownerAppointmentDate" type="date"></label>
+      <label>Status<select id="ownerAppointmentStatus"><option value="">All statuses</option></select></label>
+      <button id="exportButton" class="button secondary" type="button">Export CSV</button>
+    </section>
+    <div id="ownerAppointmentStats" class="stat-grid"></div>
+    <div id="ownerAppointments" class="appointment-list"></div>
+  </section>
+
+  <section id="view-owner-pricing" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Owner pricing control</p><h1>Barber pricing</h1><p>Override or lock individual service prices.</p></div></div>
+    <section class="panel filters">
+      <label>Barber<select id="ownerPricingBarber"></select></label>
+      <button id="ownerSavePricing" class="button primary" type="button">Save pricing controls</button>
+    </section>
+    <div class="notice">A barber sees no lock message unless the owner actually locks a specific price.</div>
+    <div id="ownerPricingList" class="pricing-list"></div>
+  </section>
+
+  <section id="view-owner-revenue" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Owner revenue reporting</p><h1>Revenue by barber</h1><p>Completed appointments are included in revenue totals.</p></div></div>
+    <section class="panel filters">
+      <label>Barber<select id="ownerRevenueBarber"></select></label>
+      <label>Timeframe<select id="ownerRevenueRange"><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option><option value="year">Yearly</option></select></label>
+      <label>Reference date<input id="ownerRevenueDate" type="date"></label>
+    </section>
+    <div id="ownerRevenueCards" class="stat-grid revenue-grid"></div>
+    <section class="panel"><h2 id="ownerRevenueHeading">Revenue details</h2><div id="ownerRevenueDetails"></div></section>
+  </section>
+
+  <section id="view-owner-analytics" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Owner analytics</p><h1>Traffic and service trends</h1><p>Analyze any barber's booking patterns and recurring clientele.</p></div></div>
+    <section class="panel filters">
+      <label>Barber<select id="ownerAnalyticsBarber"></select></label>
+      <label>Reference date<input id="ownerAnalyticsDate" type="date"></label>
+    </section>
+    <div id="ownerAnalyticsContent"></div>
+  </section>
+
+
+  <section id="view-owner-performance" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Team performance</p><h1>Barber Performance</h1><p>Compare revenue, customers, average ticket, rebooking, cancellations, and service mix.</p></div></div>
+    <section class="panel filters"><label>Timeframe<select id="performanceRange"><option value="week">This week</option><option value="month" selected>This month</option><option value="year">This year</option></select></label><label>Reference date<input id="performanceDate" type="date"></label></section>
+    <div id="performanceCards" class="performance-grid"></div>
+  </section>
+
+  <section id="view-owner-inventory" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Supplies and equipment</p><h1>Inventory</h1><p>Track quantities, minimum levels, cost, category, and reorder status.</p></div><button id="addInventoryButton" class="button primary" type="button">Add item</button></div>
+    <div id="inventorySummary" class="stat-grid"></div>
+    <section class="panel filters"><label>Search inventory<input id="inventorySearch" type="search" placeholder="Search item or category"></label><label>Show<select id="inventoryFilter"><option value="">All items</option><option value="low">Low stock only</option><option value="equipment">Equipment</option><option value="supplies">Supplies</option></select></label></section>
+    <div id="inventoryList" class="inventory-grid"></div>
+  </section>
+
+  <section id="view-owner-marketing" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Customer retention</p><h1>Marketing</h1><p>Find customers who are overdue, loyal, inactive, or ideal for service-specific promotions.</p></div></div>
+    <section class="panel filters"><label>Audience<select id="marketingAudience"><option value="overdue">Overdue recurring customers</option><option value="inactive30">No visit in 30+ days</option><option value="inactive60">No visit in 60+ days</option><option value="loyal">Loyal customers (5+ bookings)</option><option value="beard">Beard-service customers</option></select></label><label>Barber<select id="marketingBarber"><option value="">All barbers</option></select></label></section>
+    <div id="marketingSummary" class="stat-grid"></div>
+    <section class="panel campaign-builder"><h2>Campaign preview</h2><div class="field-grid"><label>Campaign name<input id="campaignName" value="We Miss You"></label><label>Offer<input id="campaignOffer" value="Book this week and receive $5 off."></label></div><label>Message<textarea id="campaignMessage">It's time for your next appointment at ICU Barber Studio.</textarea></label><button id="previewCampaignButton" class="button primary" type="button">Preview campaign</button><div id="campaignPreview" class="campaign-preview hidden"></div></section>
+    <div id="marketingAudienceList" class="appointment-list"></div>
+  </section>
+
+  <section id="view-owner-financials" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Business finances</p><h1>Financial Dashboard</h1><p>Review revenue, expenses, booth rent, utilities, after-hours charges, and estimated profit.</p></div></div>
+    <section class="panel filters"><label>Timeframe<select id="financialRange"><option value="month">Monthly</option><option value="year">Yearly</option></select></label><label>Reference date<input id="financialDate" type="date"></label></section>
+    <div id="financialCards" class="stat-grid dashboard-grid"></div>
+    <div class="dashboard-layout">
+      <section class="panel"><h2>Expense categories</h2><div id="expenseList"></div><button id="addExpenseButton" class="button secondary" type="button">Add expense</button></section>
+      <section class="panel"><h2>Revenue breakdown</h2><div id="financialBreakdown"></div></section>
+    </div>
+  </section>
+
+  <section id="view-owner-locations" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Multi-shop readiness</p><h1>Locations</h1><p>Current and future ICU Barber Studio locations.</p></div><button id="addLocationButton" class="button primary" type="button">Add future location</button></div>
+    <div id="locationCards" class="location-grid"></div>
+  </section>
+
+  <section id="view-owner-assistant" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Local data assistant</p><h1>ICU Business Assistant</h1><p>Ask about any Owner-authorized data saved in the BSMS. The Assistant answers from recorded data and tells you when information is unavailable.</p></div></div>
+    <section class="assistant-layout">
+      <div class="panel">
+        <h2>Suggested questions</h2>
+        <div class="suggestion-list">
+      <button type="button" data-question="Who owes booth rent?">Who owes booth rent?</button>
+      <button type="button" data-question="What inspection issues are still open?">Open inspection issues</button>
+      <button type="button" data-question="Which barber made the most revenue this month?">Highest revenue</button>
+      <button type="button" data-question="How many no-shows are recorded?">No-shows</button>
+      <button type="button" data-question="Whose barber license expires soon?">License expirations</button>
+      <button type="button" data-question="What requires my attention right now?">What needs attention?</button>
+    </div>
+      </div>
+      <div class="panel assistant-chat">
+        <div id="assistantMessages" class="assistant-messages"><div class="assistant-message system">Ask a question about the shop's locally stored data.</div></div>
+        <div class="assistant-input"><input id="assistantQuestion" placeholder="Ask about appointments, clients, barbers, money, inspections, licenses, marketing, operations, or other saved BSMS data"><button id="assistantAskButton" class="button primary" type="button">Ask</button></div>
+      </div>
+    </section>
+  </section>
+
+
+  <section id="view-owner-customers" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Customer relationship management</p><h1>Customer Profiles</h1><p>Search client history, preferences, lifetime value, loyalty, notes, and family accounts.</p></div></div>
+    <section class="panel filters"><label>Search customers<input id="ownerCustomerSearch" type="search" placeholder="Name, email, phone, or barber"></label><label>Segment<select id="ownerCustomerSegment"><option value="">All customers</option><option value="loyal">Loyal — 5+ visits</option><option value="inactive">Inactive — 30+ days</option><option value="weekly">Weekly / biweekly</option></select></label></section>
+    <div id="ownerCustomerStats" class="stat-grid"></div><div id="ownerCustomerList" class="appointment-list"></div>
+  </section>
+
+  <section id="view-owner-operations" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Daily shop operations</p><h1>Operations Center</h1><p>Walk-ins, waiting list, check-ins, maintenance, and shop announcements.</p></div></div>
+    <div id="operationsCards" class="stat-grid dashboard-grid"></div>
+    <div class="dashboard-layout">
+      <section class="panel">
+        <div class="section-heading-row"><h2>Walk-in queue</h2><button id="addWalkin" class="button primary" type="button">Add walk-in</button></div>
+        <div class="notice">Walk-ins are matched by real-time availability, not a fixed rotation.</div>
+        <div id="walkinQueue" class="queue-list"></div>
+      </section>
+      <section class="panel">
+        <div class="section-heading-row"><h2>Eligible barbers</h2><span class="help">Based on service duration and current schedule</span></div>
+        <div id="walkinEligibility" class="queue-list"></div>
+      </section>
+    </div>
+    <div class="dashboard-layout"><section class="panel"><div class="section-heading-row"><h2>Waiting list</h2><button id="addWaitlist" class="button secondary" type="button">Add customer</button></div><div id="waitlist" class="queue-list"></div></section><section class="panel"><div class="section-heading-row"><h2>Maintenance log</h2><button id="addMaintenance" class="button secondary" type="button">Log issue</button></div><div id="maintenanceList" class="queue-list"></div></section></div>
+    <div class="dashboard-layout"><section class="panel"><h2>Shop announcement</h2><textarea id="shopAnnouncement" placeholder="Message shown to barbers and managers"></textarea><button id="saveAnnouncement" class="button primary" type="button">Publish announcement</button><div id="announcementPreview" class="notice"></div></section></div>
+  </section>
+
+  <section id="view-owner-workforce" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">People and operations</p><h1>Workforce Management</h1><p>Schedules, availability, booth rent, licensing, and independent-contractor records.</p></div><button id="exportPayroll" class="button secondary" type="button">Export workforce CSV</button></div>
+    <div id="workforceCards" class="stat-grid dashboard-grid"></div>
+    <section class="panel"><h2>Barber workforce</h2><div id="workforceTable" class="table-wrap"></div></section>
+  </section>
+
+
+
+  <section id="view-owner-booth-rent" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Weekly booth rent</p><h1>Booth Rent Management</h1><p>Saturday is the preferred payment day. Sunday is the final due date; payments are overdue only after Sunday.</p></div></div>
+    <div id="ownerBoothRentCards" class="stat-grid dashboard-grid"></div>
+    <div id="ownerBoothRentList" class="performance-grid"></div>
+  </section>
+
+  <section id="view-owner-messages" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private staff communication</p><h1>Owner Messages</h1><p>Send private messages to barbers and participate only in group chats where Owner is selected.</p></div></div>
+    <div class="message-layout">
+      <aside class="panel message-sidebar">
+        <h2>Conversations</h2>
+        <button id="ownerNewGroup" class="button secondary" type="button">Create group chat</button>
+        <div id="ownerConversationList" class="conversation-list"></div>
+      </aside>
+      <section class="panel message-thread-panel">
+        <div id="ownerMessageSenderNotice" class="sender-notice hidden"></div>
+        <div class="thread-heading"><div><p class="eyebrow">Selected conversation</p><h2 id="ownerThreadTitle">Choose a barber</h2><p id="ownerThreadParticipants" class="help"></p></div></div>
+        <div id="ownerMessageThread" class="message-thread"></div>
+        <div class="message-compose"><textarea id="ownerMessageText" placeholder="Write a message"></textarea><button id="ownerSendMessage" class="button primary" type="button">Send</button></div>
+      </section>
+    </div>
+  </section>
+
+  <section id="view-owner-payments" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Transactions</p><h1>Payments and Receipts</h1><p>Track completed services, payment methods, tips, receipts, and outstanding balances.</p></div></div>
+    <section class="panel filters"><label>Date<input id="paymentDate" type="date"></label><label>Barber<select id="paymentBarber"><option value="">All barbers</option></select></label></section>
+    <div id="paymentCards" class="stat-grid dashboard-grid"></div><div id="paymentList" class="appointment-list"></div>
+  </section>
+
+
+  <section id="view-barber-walkins" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Real-time shop traffic</p><h1 id="barberWalkinsTitle">My Walk-Ins</h1><p>Create, accept, start, and complete walk-ins. Scheduled walk-ins block customer booking times.</p></div><button id="barberAddWalkin" class="button primary" type="button">Add walk-in</button></div>
+    <section class="panel filters">
+      <label>Date<input id="barberWalkinDate" type="date"></label>
+      <label>Status<select id="barberWalkinStatus"><option value="">All statuses</option><option>Waiting</option><option>Assigned</option><option>In Chair</option><option>Completed</option><option>Cancelled</option></select></label>
+    </section>
+    <div id="barberWalkinSummary" class="stat-grid"></div>
+    <div id="barberWalkinList" class="appointment-list"></div>
+  </section>
+
+  <section id="view-barber-appointments" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private barber schedule</p><h1 id="barberAppointmentsTitle">My Appointments</h1><p>Only this barber's appointments are displayed.</p></div></div>
+    <section class="panel filters">
+      <label>Date<input id="individualDate" type="date"></label>
+      <label>Status<select id="individualStatus"><option value="">All statuses</option></select></label>
+    </section>
+    <div id="individualAppointments" class="appointment-list"></div>
+  </section>
+
+  <section id="view-barber-calendar" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Daily appointment calendar</p><h1 id="barberCalendarTitle">My Calendar</h1><p>The grid includes normal and after-hours appointments.</p></div></div>
+    <section class="panel calendar-controls">
+      <div class="calendar-date-buttons">
+        <button id="calendarPreviousDay" class="button secondary" type="button">← Previous</button>
+        <button id="calendarToday" class="button secondary" type="button">Today</button>
+        <button id="calendarNextDay" class="button secondary" type="button">Next →</button>
+      </div>
+      <label>Calendar date<input id="calendarDate" type="date"></label>
+    </section>
+    <section class="calendar-card">
+      <div class="calendar-card-header"><div><strong id="calendarDateHeading">Daily schedule</strong><span id="calendarAppointmentCount">0 appointments</span></div><span>9:00 AM–11:00 PM grid</span></div>
+      <div class="calendar-scroll"><div class="daily-calendar"><div id="calendarTimes" class="calendar-times"></div><div id="calendarLane" class="calendar-lane"></div></div></div>
+      <div id="calendarEmpty" class="calendar-empty hidden"><h2>No appointments</h2><p>No bookings are scheduled on this date.</p></div>
+    </section>
+  </section>
+
+  <section id="view-barber-clientele" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private customer list</p><h1 id="barberClienteleTitle">My Clientele</h1><p>Every client who has booked this barber is kept in an alphabetical list that remains visible while you work.</p></div></div>
+    <div id="clienteleStats" class="stat-grid"></div>
+    <div class="client-workspace">
+      <aside class="panel client-directory">
+        <h2>Clients</h2>
+        <label>Search clientele<input id="clienteleSearch" type="search" placeholder="Name, email, or phone"></label>
+        <div id="clienteleDirectoryList" class="client-directory-list"></div>
+      </aside>
+      <section id="clienteleDetail" class="client-detail-pane">
+        <div class="panel"><h2>Select a client</h2><p>Choose a client from the list to view that client's history with this barber.</p></div>
+      </section>
+    </div>
+  </section>
+
+  <section id="view-barber-services" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Personal service menu</p><h1 id="barberServicesTitle">My Services</h1><p>Choose the shop services you perform and add services that are unique to you. Changes update My Prices, Customer Booking, and Owner Pricing.</p></div></div>
+    <div class="dashboard-layout">
+      <section class="panel">
+        <h2>Services I Offer</h2>
+        <p class="help">Turn a service off instead of deleting it. Historical appointments and sales stay intact.</p>
+        <div id="barberServicesList" class="service-management-list"></div>
+      </section>
+      <section class="panel">
+        <h2>Add a Service</h2>
+        <div class="field-grid"><label>Service name<input id="newServiceName" placeholder="Example: Hot Towel Shave"></label><label>Duration (minutes)<input id="newServiceMinutes" type="number" min="5" step="5" value="30"></label></div>
+        <label>Price<div class="price-input-wrap"><span>$</span><input id="newServicePrice" type="number" min="0" step="0.01" value="25.00"></div></label>
+        <label>Description <span class="optional-label">Optional</span><textarea id="newServiceDescription" placeholder="Briefly describe the service"></textarea></label>
+        <button id="addBarberService" class="button primary" type="button">Add Service</button>
+        <p class="help">A service added here is offered only by this barber unless the Owner later changes the catalog in the production system.</p>
+      </section>
+    </div>
+  </section>
+
+  <section id="view-barber-prices" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Service pricing</p><h1 id="barberPricesTitle">My Prices</h1><p>Set the prices customers see when they select you.</p></div><button id="barberSavePrices" class="button primary" type="button">Save my prices</button></div>
+    <div id="barberPricingList" class="pricing-list"></div>
+  </section>
+
+  <section id="view-barber-revenue" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private revenue dashboard</p><h1 id="barberRevenueTitle">My Revenue</h1><p>Daily revenue is shown by default.</p></div></div>
+    <section class="panel filters">
+      <label>Timeframe<select id="barberRevenueRange"><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option><option value="year">Yearly</option></select></label>
+      <label>Reference date<input id="barberRevenueDate" type="date"></label>
+    </section>
+    <div id="barberRevenueCards" class="stat-grid revenue-grid"></div>
+    <section class="panel"><h2 id="barberRevenueHeading">Revenue details</h2><div id="barberRevenueDetails"></div></section>
+  </section>
+
+  <section id="view-barber-analytics" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private business analytics</p><h1 id="barberAnalyticsTitle">My Analytics</h1><p>Traffic, services, and recurring-customer patterns.</p></div></div>
+    <section class="panel filters"><label>Reference date<input id="barberAnalyticsDate" type="date"></label></section>
+    <div id="barberAnalyticsContent"></div>
+  </section>
+  <section id="view-barber-client-tools" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Client consultation</p><h1 id="clientToolsTitle">Client Tools</h1><p>The barber's complete client list stays visible while consultation notes, family information, and preferences are open.</p></div></div>
+    <div class="client-workspace">
+      <aside class="panel client-directory">
+        <h2>Clients</h2>
+        <label>Search clients<input id="clientToolsSearch" type="search" placeholder="Name, email, or phone"></label>
+        <div id="clientToolsList" class="client-directory-list"></div>
+      </aside>
+      <section id="clientToolsContent" class="client-detail-pane">
+        <div class="panel"><h2>Select a client</h2><p>Choose a client from the alphabetical list.</p></div>
+      </section>
+    </div>
+  </section>
+
+  <section id="view-barber-availability" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Date-specific schedule control</p><h1 id="availabilityTitle">My Availability</h1><p>Set the exact work hours and break for each date in the selected week.</p></div><button id="saveAvailability" class="button primary" type="button">Save this week</button></div>
+    <section class="panel availability-week-controls">
+      <div class="calendar-date-buttons">
+        <button id="availabilityPreviousWeek" class="button secondary" type="button">← Previous week</button>
+        <button id="availabilityCurrentWeek" class="button secondary" type="button">Current week</button>
+        <button id="availabilityNextWeek" class="button secondary" type="button">Next week →</button>
+      </div>
+      <div><strong id="availabilityWeekLabel"></strong><p class="help">Customer booking times use these hours for the exact selected date.</p></div>
+    </section>
+    <div id="availabilityGrid" class="availability-grid"></div>
+    <section class="panel"><h2>Time off</h2><div class="field-grid"><label>Start date<input id="timeOffStart" type="date"></label><label>End date<input id="timeOffEnd" type="date"></label></div><label>Reason<input id="timeOffReason" placeholder="Vacation, sick day, personal day"></label><button id="addTimeOff" class="button secondary" type="button">Block time off</button><div id="timeOffList" class="queue-list"></div></section>
+  </section>
+
+  <section id="view-barber-deposits" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Booking protection</p><h1 id="depositSettingsTitle">Deposit Settings</h1><p>Choose whether your customers must pay a non-refundable deposit to secure an appointment.</p></div></div>
+    <section class="panel deposit-settings-panel">
+      <label class="toggle-row"><input id="requireDeposit" type="checkbox"> <strong>Require Deposit</strong></label>
+      <label>Deposit amount<div class="price-input-wrap"><span>$</span><input id="depositAmount" type="number" min="0" step="1" value="20"></div></label>
+      <div class="notice"><strong>Customer policy:</strong> Required deposits are non-refundable and are applied toward the remaining appointment balance.</div>
+      <button id="saveDepositSettings" class="button primary" type="button">Save deposit settings</button>
+    </section>
+  </section>
+
+  <section id="view-barber-booth-rent" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Weekly payment</p><h1 id="barberBoothRentTitle">Booth Rent</h1><p>Saturday is the preferred payment day. Sunday is the final due date.</p></div></div>
+    <div id="barberBoothRentCards" class="stat-grid dashboard-grid"></div>
+    <div class="dashboard-layout">
+      <section class="panel"><h2>Pay Booth Rent</h2><label>Amount<div class="price-input-wrap"><span>$</span><input id="boothRentPayAmount" type="number" min="0" step="1"></div></label><label>Payment method<select id="boothRentPayMethod"><option>Card</option><option>Zelle</option><option>Cash App</option><option>Venmo</option><option>Bank Transfer</option><option>Other</option></select></label><button id="payBoothRent" class="button primary" type="button">Record Payment</button><p class="help">This records the payment workflow without processing bank or card credentials in ICU Barber Studio.</p></section>
+      <section class="panel"><h2>Payment History</h2><div id="barberBoothRentHistory" class="queue-list"></div></section>
+    </div>
+  </section>
+
+  <section id="view-barber-pos" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Point of sale</p><h1 id="barberPosTitle">POS / Checkout</h1><p>Checkout appointments and walk-ins, apply deposits, record tips and payment methods, or create a quick sale.</p></div></div>
+    <div class="dashboard-layout">
+      <section class="panel">
+        <h2>Transaction</h2>
+        <label>Customer / appointment<select id="posSource"></select></label>
+        <div id="posCustomerFields" class="field-grid hidden"><label>Customer name<input id="posQuickName" placeholder="Walk-in / quick-sale customer"></label><label>Phone<input id="posQuickPhone" type="tel" inputmode="numeric" maxlength="14" placeholder="(555) 555-5555"></label></div>
+        <h3>Services rendered</h3><div id="posServiceList" class="service-list compact"></div>
+        <div class="field-grid"><label>Tip<div class="price-input-wrap"><span>$</span><input id="posTip" type="number" min="0" step="1" value="0"></div></label><label>Payment method<select id="posPaymentMethod"><option>Cash</option><option>Card</option><option>Zelle</option><option>Cash App</option><option>Venmo</option><option>Other</option></select></label></div>
+        <label class="fee-toggle"><input id="posHairScalpFee" type="checkbox"> <span><strong>Add $5 Hair &amp; Scalp Preparation Fee</strong><small>Use only when extra cleaning/preparation was actually required before the scheduled service.</small></span></label>
+        <div id="posSummary" class="summary-body"></div>
+        <button id="completePosSale" class="button primary large" type="button">Complete Sale</button>
+      </section>
+      <section class="panel"><h2>Recent Transactions</h2><div id="posRecentTransactions" class="queue-list"></div></section>
+    </div>
+  </section>
+
+  <section id="view-barber-social" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private media workspace</p><h1 id="socialContentTitle">Social Media Content</h1><p>Capture or upload your own photos and videos, organize them, add captions, and download them for TikTok, Facebook, Instagram, X/Twitter, or YouTube.</p></div></div>
+    <section class="panel social-upload-panel">
+      <div class="social-actions">
+        <label class="button primary file-button">Take Photo / Video<input id="socialCaptureInput" type="file" accept="image/*,video/*" capture="environment"></label>
+        <label class="button secondary file-button">Upload From Device<input id="socialUploadInput" type="file" accept="image/*,video/*" multiple></label>
+      </div>
+      <p class="help">Media is stored privately in authenticated Supabase Storage and is available across your signed-in devices.</p>
+    </section>
+    <section class="panel filters"><label>Platform<select id="socialPlatformFilter"><option value="">All platforms</option><option>TikTok</option><option>Instagram</option><option>Facebook</option><option>X/Twitter</option><option>YouTube</option></select></label><label>Media type<select id="socialTypeFilter"><option value="">Photos & videos</option><option value="image">Photos</option><option value="video">Videos</option></select></label></section>
+    <div id="socialMediaGrid" class="social-media-grid"></div>
+  </section>
+
+  <section id="view-barber-marketing" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private client marketing</p><h1 id="barberMarketingTitle">My Marketing</h1><p>Audience tools use only this barber's own clientele and booking history.</p></div></div>
+    <section class="panel filters">
+      <label>Audience<select id="barberMarketingAudience"><option value="overdue">Overdue recurring customers</option><option value="inactive30">No visit in 30+ days</option><option value="inactive60">No visit in 60+ days</option><option value="loyal">Loyal customers (5+ bookings)</option><option value="service">Specific service customers</option></select></label>
+      <label id="barberMarketingServiceLabel" class="hidden">Service<select id="barberMarketingService"></select></label>
+    </section>
+    <div id="barberMarketingSummary" class="stat-grid"></div>
+    <section class="panel campaign-builder"><h2>Campaign preview</h2><div class="field-grid"><label>Campaign name<input id="barberCampaignName" value="Time for Your Next Cut"></label><label>Offer<input id="barberCampaignOffer" value="Reserve your next appointment this week."></label></div><label>Message<textarea id="barberCampaignMessage">It may be time for your next visit at ICU Barber Studio.</textarea></label><button id="barberPreviewCampaign" class="button primary" type="button">Preview campaign</button><div id="barberCampaignPreview" class="campaign-preview hidden"></div></section>
+    <div id="barberMarketingList" class="appointment-list"></div>
+  </section>
+
+  <section id="view-barber-messages" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Private staff communication</p><h1 id="barberMessagesTitle">Messages</h1><p>Owner conversations, private barber-to-barber threads, and participant-only group chats.</p></div></div>
+    <div class="message-layout">
+      <aside class="panel message-sidebar">
+        <h2>Conversations</h2>
+        <button id="barberNewGroup" class="button secondary" type="button">Create group chat</button>
+        <div id="barberConversationList" class="conversation-list"></div>
+      </aside>
+      <section class="panel message-thread-panel">
+        <div id="barberMessageSenderNotice" class="sender-notice hidden"></div>
+        <div class="thread-heading"><div><p class="eyebrow">Selected conversation</p><h2 id="barberThreadTitle">Choose a conversation</h2><p id="barberThreadParticipants" class="help"></p></div></div>
+        <div id="barberMessageThread" class="message-thread"></div>
+        <div class="message-compose"><textarea id="barberMessageText" placeholder="Write a message"></textarea><button id="barberSendMessage" class="button primary" type="button">Send</button></div>
+      </section>
+    </div>
+  </section>
+
+  <dialog id="socialImageEditor" class="social-editor-dialog">
+    <div class="social-editor-shell">
+      <div class="social-editor-header">
+        <div><p class="eyebrow">Image editor</p><h2 id="socialEditorTitle">Add Text to Image</h2><p class="help">Drag text directly on the image. Export creates a new copy and preserves the original.</p></div>
+        <button id="closeSocialEditor" class="button secondary" type="button">Close</button>
+      </div>
+
+      <div class="social-editor-layout">
+        <section class="social-editor-canvas-panel">
+          <canvas id="socialEditorCanvas" width="1080" height="1080"></canvas>
+          <p class="help">Tip: select a layer, then drag it directly on the image.</p>
+        </section>
+
+        <aside class="social-editor-controls">
+          <section class="panel compact-panel">
+            <div class="section-heading-row"><h3>Text layers</h3><button id="addTextLayer" class="button primary" type="button">Add Text</button></div>
+            <div id="textLayerList" class="text-layer-list"></div>
+          </section>
+
+          <section class="panel compact-panel">
+            <h3>Selected text</h3>
+            <label>Text<textarea id="overlayText" rows="3" placeholder="Type your text"></textarea></label>
+            <label>Font
+              <select id="overlayFont">
+                <optgroup label="Bold / Impact">
+                  <option value="Impact">Impact</option>
+                  <option value="Arial Black">Arial Black</option>
+                  <option value="Trebuchet MS">Trebuchet MS</option>
+                </optgroup>
+                <optgroup label="Clean / Modern">
+                  <option value="Arial">Arial</option>
+                  <option value="Helvetica">Helvetica</option>
+                  <option value="Verdana">Verdana</option>
+                  <option value="Tahoma">Tahoma</option>
+                  <option value="Segoe UI">Segoe UI</option>
+                </optgroup>
+                <optgroup label="Elegant / Classic">
+                  <option value="Georgia">Georgia</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Garamond">Garamond</option>
+                  <option value="Palatino Linotype">Palatino</option>
+                </optgroup>
+                <optgroup label="Script / Creative">
+                  <option value="Brush Script MT">Brush Script</option>
+                  <option value="Lucida Handwriting">Lucida Handwriting</option>
+                  <option value="Comic Sans MS">Comic Sans</option>
+                </optgroup>
+                <optgroup label="Monospace">
+                  <option value="Courier New">Courier New</option>
+                  <option value="Consolas">Consolas</option>
+                </optgroup>
+              </select>
+            </label>
+
+            <div class="field-grid">
+              <label>Font size<input id="overlayFontSize" type="number" min="12" max="240" step="1" value="64"></label>
+              <label>Font color<input id="overlayColor" type="color" value="#ffffff"></label>
+            </div>
+
+            <div class="editor-toggle-grid">
+              <label><input id="overlayBold" type="checkbox"> Bold</label>
+              <label><input id="overlayItalic" type="checkbox"> Italic</label>
+              <label><input id="overlayUnderline" type="checkbox"> Underline</label>
+              <label><input id="overlayShadow" type="checkbox" checked> Shadow</label>
+              <label><input id="overlayHighlight" type="checkbox"> Highlight</label>
+            </div>
+
+            <label>Alignment
+              <select id="overlayAlign">
+                <option value="left">Left</option>
+                <option value="center" selected>Center</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+
+            <div class="field-grid">
+              <label>Highlight color<input id="overlayHighlightColor" type="color" value="#000000"></label>
+              <label>Highlight opacity<input id="overlayHighlightOpacity" type="range" min="0" max="100" value="60"></label>
+            </div>
+
+            <div class="social-card-actions">
+              <button id="duplicateTextLayer" class="button secondary" type="button">Duplicate</button>
+              <button id="bringTextForward" class="button secondary" type="button">Bring Forward</button>
+              <button id="sendTextBackward" class="button secondary" type="button">Send Backward</button>
+              <button id="deleteTextLayer" class="button danger" type="button">Delete Layer</button>
+            </div>
+          </section>
+
+          <section class="panel compact-panel">
+            <h3>Export</h3>
+            <label>New image title<input id="socialExportTitle" placeholder="Edited social image"></label>
+            <button id="exportSocialImage" class="button primary large" type="button">Save Edited Copy</button>
+            <p class="help">The edited copy is added to your Social Media Content library as a PNG.</p>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="socialPostPreview" class="social-editor-dialog social-post-preview-dialog">
+    <div class="social-editor-shell">
+      <div class="social-editor-header">
+        <div><p class="eyebrow">Post preview studio</p><h2 id="socialPostPreviewTitle">Preview Social Post</h2><p class="help">Preview the photo or video in common social-media layouts before you post it.</p></div>
+        <button id="closeSocialPostPreview" class="button secondary" type="button">Close</button>
+      </div>
+      <div class="social-editor-layout post-preview-layout">
+        <section class="post-preview-stage-panel">
+          <div id="socialPostPreviewFrame" class="post-preview-frame">
+            <div id="socialPostPreviewMedia" class="post-preview-media"></div>
+            <div id="socialPostOverlay" class="post-preview-overlay"></div>
+          </div>
+          <div class="post-preview-copy">
+            <strong id="socialPostPreviewBarber">ICU Barber Studio</strong>
+            <p id="socialPostPreviewCaption"></p>
+            <p id="socialPostPreviewHashtags" class="post-preview-hashtags"></p>
+          </div>
+          <p id="socialPostVideoNote" class="help hidden">Video text is previewed live here. The original video remains unchanged in Supabase; burning text into a finished video requires the video-transcoding step we will add separately.</p>
+          <p id="socialPostCodecNote" class="help">If a video has sound but shows black on a Windows computer, that device may not support the video's HEVC/H.265 codec. The Supabase upload itself can still be valid.</p>
+        </section>
+        <aside class="social-editor-controls">
+          <section class="panel compact-panel">
+            <h3>Post layout</h3>
+            <div class="field-grid">
+              <label>Platform<select id="postPreviewPlatform"><option value="">Not assigned</option><option>TikTok</option><option>Instagram</option><option>Facebook</option><option>X/Twitter</option><option>YouTube</option></select></label>
+              <label>Preview size<select id="postPreviewRatio"><option value="9/16">Vertical 9:16</option><option value="4/5">Portrait 4:5</option><option value="1/1">Square 1:1</option><option value="16/9">Landscape 16:9</option></select></label>
+            </div>
+            <label>Media fit<select id="postPreviewFit"><option value="cover">Fill frame (crop)</option><option value="contain">Show whole photo/video</option></select></label>
+          </section>
+          <section class="panel compact-panel">
+            <h3>Text overlay</h3>
+            <label>Text<textarea id="postPreviewText" rows="3" placeholder="Add optional text over your photo or video"></textarea></label>
+            <label>Font<select id="postPreviewFont">
+              <optgroup label="Bold / Impact"><option value="Impact">Impact</option><option value="Arial Black">Arial Black</option><option value="Trebuchet MS">Trebuchet MS</option></optgroup>
+              <optgroup label="Clean / Modern"><option value="Arial">Arial</option><option value="Helvetica">Helvetica</option><option value="Verdana">Verdana</option><option value="Tahoma">Tahoma</option><option value="Segoe UI">Segoe UI</option></optgroup>
+              <optgroup label="Elegant / Classic"><option value="Georgia">Georgia</option><option value="Times New Roman">Times New Roman</option><option value="Garamond">Garamond</option><option value="Palatino Linotype">Palatino</option></optgroup>
+              <optgroup label="Script / Creative"><option value="Brush Script MT">Brush Script</option><option value="Lucida Handwriting">Lucida Handwriting</option><option value="Comic Sans MS">Comic Sans</option></optgroup>
+              <optgroup label="Monospace"><option value="Courier New">Courier New</option><option value="Consolas">Consolas</option></optgroup>
+            </select></label>
+            <div class="field-grid">
+              <label>Font size<input id="postPreviewFontSize" type="number" min="14" max="160" step="1" value="48"></label>
+              <label>Font color<input id="postPreviewColor" type="color" value="#ffffff"></label>
+            </div>
+            <div class="editor-toggle-grid">
+              <label><input id="postPreviewBold" type="checkbox" checked> Bold</label>
+              <label><input id="postPreviewItalic" type="checkbox"> Italic</label>
+              <label><input id="postPreviewUnderline" type="checkbox"> Underline</label>
+              <label><input id="postPreviewShadow" type="checkbox" checked> Shadow</label>
+              <label><input id="postPreviewHighlight" type="checkbox"> Highlight</label>
+            </div>
+            <div class="field-grid">
+              <label>Alignment<select id="postPreviewAlign"><option value="left">Left</option><option value="center" selected>Center</option><option value="right">Right</option></select></label>
+              <label>Position<select id="postPreviewPosition"><option value="top">Top</option><option value="middle" selected>Middle</option><option value="bottom">Bottom</option></select></label>
+            </div>
+            <div class="field-grid">
+              <label>Highlight color<input id="postPreviewHighlightColor" type="color" value="#000000"></label>
+              <label>Highlight opacity<input id="postPreviewHighlightOpacity" type="range" min="0" max="100" value="60"></label>
+            </div>
+            <p class="help">These controls let you preview placement and styling before posting. For photos, use the Full Image Editor to export a finished edited copy into Supabase.</p>
+            <button id="postPreviewOpenImageEditor" class="button secondary hidden" type="button">Open Full Image Editor</button>
+          </section>
+          <section class="panel compact-panel">
+            <h3>Caption preview</h3>
+            <label>Caption<textarea id="postPreviewCaptionInput" rows="4"></textarea></label>
+            <label>Hashtags<input id="postPreviewHashtagsInput" placeholder="#barber #freshcut"></label>
+            <button id="savePostPreviewDetails" class="button primary large" type="button">Save Post Details</button>
+            <p class="help">Platform, caption and hashtags are saved to Supabase and remain available on your other devices.</p>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+
+
+<section id="view-barber-reviews" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Verified feedback</p><h1>Reviews</h1></div></div><div id="barberReviewsList" class="performance-grid"></div></section>
+<section id="view-barber-client-messages" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Private appointment communication</p><h1>Client Messages</h1></div></div><div id="barberClientMessagesList" class="performance-grid"></div></section>
+
+<section id="view-owner-control-center" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Self-service administration</p><h1>Owner Control Center</h1><p>Manage shop-wide settings without editing code.</p></div></div><div class="dashboard-layout"><section class="panel"><h2>Shop Settings</h2><label>Shop name<input id="settingShopName"></label><label>Address<input id="settingAddress"></label><label>Phone<input id="settingPhone" type="tel"></label><label>Email<input id="settingEmail" type="email"></label><button id="saveOwnerSettings" class="button primary" type="button">Save Settings</button></section><section class="panel"><h2>Emergency Shop Status</h2><label>Status<select id="shopStatusSelect"><option>Open</option><option>Closed</option><option>Opening Late</option><option>Not Accepting New Appointments Today</option></select></label><label>Customer message<textarea id="shopStatusMessage"></textarea></label><button id="saveShopStatus" class="button primary" type="button">Update Status</button></section></div></section>
+<section id="view-owner-barber-management" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Roster & access</p><h1>Barber Management</h1><p>Manage active and former barbers while preserving history. New hires are automatically excluded from the Original Review Group.</p></div><button id="addBarberBtn" class="button primary" type="button">Add Barber</button></div><div id="barberManagementList" class="performance-grid"></div></section>
+<section id="view-owner-diary" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Private management record</p><h1>Owner Diary</h1><p>Recall a specific barber and review or add private notes.</p></div></div><section class="panel filters"><label>Barber / Staff<select id="diaryPerson"></select></label><label>Category<select id="diaryCategoryFilter"><option value="">All</option><option>General</option><option>Attendance</option><option>Performance</option><option>Customer Issue</option><option>Coaching</option><option>Recognition</option><option>Policy</option><option>Communication</option><option>Other</option></select></label><label>Keyword<input id="diaryKeyword"></label></section><div class="dashboard-layout"><section class="panel"><h2>Add Note</h2><label>Subject<input id="diarySubject"></label><div class="field-grid"><label>Event date<input id="diaryDate" type="date"></label><label>Event time<input id="diaryTime" type="time"></label></div><label>Category<select id="diaryCategory"><option>General</option><option>Attendance</option><option>Performance</option><option>Customer Issue</option><option>Coaching</option><option>Recognition</option><option>Policy</option><option>Other</option></select></label><label>Note<textarea id="diaryNote"></textarea></label><button id="saveDiaryNote" class="button primary" type="button">Save Note</button><button id="memorializeConversationBtn" class="button secondary" type="button">Memorialize Owner ↔ Barber Conversation</button></section><section class="panel"><h2>History</h2><div id="diaryHistory" class="queue-list"></div></section></div></section>
+<section id="view-owner-incidents" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Formal records</p><h1>Incident Reports</h1></div><button id="addIncidentBtn" class="button primary" type="button">New Incident</button></div><div id="incidentList" class="performance-grid"></div></section>
+<section id="view-owner-inspections" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Compliance</p><h1>Inspections</h1><p>Summaries, licenses, start dates, findings and corrective actions.</p></div><button id="newInspectionBtn" class="button primary" type="button">New Inspection</button></div><section class="panel"><h2>Inspection-Ready Active Barber Roster</h2><div id="inspectionRoster" class="table-wrap"></div></section><div id="inspectionHistory" class="performance-grid"></div></section>
+<section id="view-owner-inspection-issues" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Persistent corrective actions</p><h1>Inspection Issues</h1><p>Open findings stay highlighted until individually resolved.</p></div></div><div id="inspectionIssueList" class="performance-grid"></div></section>
+<section id="view-owner-checklists" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Daily controls</p><h1>Opening / Closing / Sanitation Checklists</h1></div></div><div id="checklistWorkspace" class="dashboard-layout"></div></section>
+<section id="view-owner-documents" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Central records</p><h1>Document Center</h1></div><label class="button primary file-button">Add Document<input id="ownerDocumentUpload" type="file" multiple></label></div><div id="documentList" class="performance-grid"></div></section>
+<section id="view-owner-audit" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Accountability</p><h1>Audit History</h1></div></div><div id="auditList" class="queue-list"></div></section>
+<section id="view-owner-backup" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Recovery</p><h1>Backup / Export</h1></div></div><section class="panel"><button id="downloadFullBackup" class="button primary" type="button">Download Full JSON Backup</button><button id="downloadAppointmentsCsv" class="button secondary" type="button">Appointments CSV</button></section></section>
+<section id="view-owner-health" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Technical status</p><h1>System Health</h1></div></div><div id="systemHealthCards" class="performance-grid"></div></section>
+<section id="view-owner-cameras" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Owner only</p><h1>Shop Cameras</h1><p>Integration-ready. Real feeds require secure camera/NVR integration.</p></div></div><div id="cameraGrid" class="camera-grid"></div></section>
+<section id="view-owner-guide" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Self-service help</p><h1>Owner Guide</h1></div></div><section class="panel"><label>Search<input id="ownerGuideSearch" placeholder="How do I..."></label></section><div id="ownerGuideList" class="performance-grid"></div></section>
+
+<section id="view-owner-growth" class="view hidden">
+  <div class="page-heading"><div><p class="eyebrow">Grow ICU Lookin</p><h1>Growth & Marketing Center</h1><p>Create campaigns, track referral sources, review win-back opportunities, and see where bookings originate.</p></div></div>
+  <div id="growthOpportunityCards" class="stat-grid dashboard-grid"></div>
+  <div class="dashboard-layout">
+    <section class="panel">
+      <h2>Create / Edit Campaign</h2>
+      <label>Campaign name<input id="growthCampaignName" placeholder="Back-to-School Cuts"></label>
+      <div class="field-grid">
+        <label>Start date<input id="growthCampaignStart" type="date"></label>
+        <label>End date<input id="growthCampaignEnd" type="date"></label>
+      </div>
+      <label>Status<select id="growthCampaignStatus"><option>Draft</option><option>Active</option><option>Paused</option><option>Completed</option></select></label>
+      <label>Offer / message<textarea id="growthCampaignMessage" placeholder="Describe the promotion or campaign message"></textarea></label>
+      <label>Promo code<input id="growthCampaignCode" placeholder="BACK2SCHOOL"></label>
+      <button id="saveGrowthCampaign" class="button primary" type="button">Save Campaign</button>
+    </section>
+    <section class="panel">
+      <h2>Growth Opportunities</h2>
+      <div id="growthOpportunities" class="queue-list"></div>
+    </section>
+  </div>
+  <div class="dashboard-layout">
+    <section class="panel">
+      <h2>Campaigns</h2>
+      <div id="campaignList" class="queue-list"></div>
+    </section>
+    <section class="panel">
+      <h2>Referral / QR Source</h2>
+      <label>Source name<input id="growthReferralName" placeholder="Apartment Flyer - Broadway"></label>
+      <label>Optional campaign note<input id="growthReferralNote" placeholder="Where or how this source will be used"></label>
+      <button id="saveReferralSource" class="button secondary" type="button">Add Source</button>
+      <div id="referralSourceList" class="queue-list"></div>
+    </section>
+  </div>
+  <section class="panel">
+    <h2>Marketing Attribution</h2>
+    <div id="attributionSummary" class="queue-list"></div>
+  </section>
+</section>
+
+<section id="view-owner-reports" class="view hidden"><div class="page-heading"><div><p class="eyebrow">Management analytics</p><h1>Business Reports</h1></div></div><div id="businessReportCards" class="stat-grid dashboard-grid"></div><section class="panel"><h2>Report Highlights</h2><div id="businessReportHighlights" class="queue-list"></div></section></section>
+
+
+  <section id="view-account-security" class="view hidden">
+    <div class="page-heading"><div><p class="eyebrow">Supabase account security</p><h1>Account &amp; Security</h1><p>Manage the password for the currently signed-in ICU Lookin staff account.</p></div></div>
+    <div class="dashboard-layout">
+      <section class="panel">
+        <h2>Signed-in account</h2>
+        <div id="securityIdentity" class="notice">Loading account…</div>
+        <p class="help">Passwords are managed by Supabase Auth. ICU Lookin does not display or store your readable password.</p>
+      </section>
+      <section class="panel">
+        <h2>Change my password</h2>
+        <label>Current password<input id="securityCurrentPassword" type="password" autocomplete="current-password"></label>
+        <label>New password<input id="securityNewPassword" type="password" autocomplete="new-password" minlength="8"></label>
+        <label>Confirm new password<input id="securityConfirmPassword" type="password" autocomplete="new-password" minlength="8"></label>
+        <button id="securityChangePassword" class="button primary" type="button">Change Password</button>
+        <p id="securityPasswordStatus" class="help"></p>
+      </section>
+    </div>
+    <section id="ownerRecoveryPanel" class="panel hidden">
+      <h2>Owner account recovery</h2>
+      <p>Barber account lock, unlock, and password-recovery controls will be managed here. Existing passwords are never shown to the Owner.</p>
+      <div id="ownerRecoveryList"></div>
+    </section>
+  </section>
+</main>
+
+<footer>ICU Barber Studio • Secure shared data powered by Supabase.</footer>
+
+<dialog id="barberPortfolioDialog" class="portfolio-dialog">
+  <div class="portfolio-shell">
+    <div class="portfolio-header"><div><p class="eyebrow">Barber portfolio</p><h2 id="barberPortfolioTitle">Recent Work</h2><p id="barberPortfolioSubtitle" class="help">Photos and videos selected by the barber for client viewing.</p></div><button id="closeBarberPortfolio" class="button secondary" type="button">Close</button></div>
+    <div id="barberPortfolioGrid" class="portfolio-grid"></div>
+  </div>
+</dialog>
+<dialog id="barberPortfolioViewer" class="portfolio-viewer-dialog">
+  <div class="portfolio-viewer-shell">
+    <div class="portfolio-viewer-header"><div><h2 id="portfolioViewerTitle">Portfolio</h2><p id="portfolioViewerCategory" class="help"></p></div><button id="closePortfolioViewer" class="button secondary" type="button">Close</button></div>
+    <div id="portfolioViewerMedia" class="portfolio-viewer-media"></div>
+  </div>
+</dialog>
+
+<dialog id="hairScalpPolicyModal" class="required-policy-dialog">
+  <div class="required-policy-shell">
+    <p class="eyebrow">Required before booking</p>
+    <h2>Hair &amp; Scalp Preparation Policy</h2>
+    <p>Please arrive with your hair and scalp <strong>clean and free of excessive oil, grease, product buildup, and debris.</strong></p>
+    <p>If your barber must clean or prepare your hair and/or scalp before your scheduled service can begin, a <strong>$5 Hair &amp; Scalp Preparation Fee</strong> will be added to your service total.</p>
+    <div class="notice">The $5 fee is not charged merely for agreeing to this policy. It is added only when the barber actually has to perform the extra cleaning or preparation.</div>
+    <div class="required-policy-actions"><button id="agreeHairScalpPolicy" class="button primary large" type="button">I Agree &amp; Continue</button><a class="button danger" href="index.html">Exit Booking</a></div>
+  </div>
+</dialog>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
