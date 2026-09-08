@@ -18,22 +18,106 @@
 <script src="assets/supabase-config.js"></script>
 <script src="assets/supabase-auth.js"></script>
 <script>
-const BARBERS=["Mike","Will","Henry","Mon","Kody"],$=id=>document.getElementById(id);let selected="",pendingIdentity=null;
-function openApp(b){sessionStorage.setItem("icuAppMode","individual");sessionStorage.setItem("icuBarberName",b);location.href=`${b.toUpperCase()}_BARBER_APP.html`}
+const BARBERS=["Mike","Will","Henry","Mon","Kody"],$=id=>document.getElementById(id);
+let selected="",pendingIdentity=null,selectionVersion=0,autoOpenTimer=null;
+
+function closeDialog(id){const d=$(id);try{if(d?.open)d.close()}catch(_){}}
+function setBarberUrl(b){
+  try{
+    const u=new URL(location.href);u.searchParams.set("barber",b);u.hash="";history.replaceState({barber:b},"",u.pathname+u.search);
+  }catch(_){ }
+}
+function openApp(b){
+  sessionStorage.setItem("icuAppMode","individual");
+  sessionStorage.setItem("icuBarberName",b);
+  location.href=`${b.toUpperCase()}_BARBER_APP.html`;
+}
 async function begin(b){
   if(!BARBERS.includes(b))return;
-  selected=b;$("authStatus").textContent="";$("authEmail").value="";$("authPassword").value="";
-  try{const cur=await ICUAuth.current();if(cur&&cur.identity.role==="barber"&&cur.identity.display_name===b&&!cur.identity.must_change_password){openApp(b);return}}catch(_){ }
-  $("authTitle").textContent=`${b} — Sign In`;$("authDialog").showModal();setTimeout(()=>$("authEmail").focus(),50);
+  const version=++selectionVersion;
+  selected=b;pendingIdentity=null;
+  closeDialog("passwordDialog");closeDialog("authDialog");
+  $("authStatus").textContent="";$("authEmail").value="";$("authPassword").value="";
+  $("authEmail").name=`icu_${b.toLowerCase()}_email`;
+  $("authPassword").name=`icu_${b.toLowerCase()}_password`;
+  $("authEmail").setAttribute("autocomplete","off");
+  $("authPassword").setAttribute("autocomplete","off");
+  $("authEmail").setAttribute("autocapitalize","none");
+  $("authEmail").setAttribute("spellcheck","false");
+  $("authTitle").textContent=`${b} — Sign In`;
+  $("authText").textContent=`Enter the email and password for ${b}'s ICU Barber Studio account.`;
+  try{
+    const cur=await ICUAuth.current();
+    if(version!==selectionVersion)return;
+    if(cur&&cur.identity.role==="barber"&&cur.identity.display_name===b&&!cur.identity.must_change_password){openApp(b);return}
+  }catch(_){ }
+  if(version!==selectionVersion)return;
+  $("authDialog").showModal();
+  setTimeout(()=>{if(version===selectionVersion)$("authEmail").focus()},50);
 }
-document.querySelectorAll("[data-barber]:not([disabled])").forEach(b=>b.onclick=()=>begin(b.dataset.barber));
-$("authCancel").onclick=()=>$("authDialog").close();
-$("authForm").onsubmit=async e=>{e.preventDefault();$("authStatus").textContent="Signing in…";$("authSubmit").disabled=true;try{
-  const result=await ICUAuth.signIn($("authEmail").value,$("authPassword").value,$("rememberDevice").checked);
-  if(result.identity.role!=="barber"||result.identity.display_name!==selected){await ICUAuth.signOut();throw new Error(`This account is not authorized for ${selected}'s Barber App.`)}
-  pendingIdentity=result.identity;$("authDialog").close();
-  if(result.identity.must_change_password){$("newPassword").value="";$("confirmPassword").value="";$("passwordStatus").textContent="";$("passwordDialog").showModal();setTimeout(()=>$("newPassword").focus(),50)}else openApp(selected);
-}catch(err){$("authStatus").textContent=err?.message||"Unable to sign in."}finally{$("authSubmit").disabled=false}};
-$("passwordForm").onsubmit=async e=>{e.preventDefault();const a=$("newPassword").value,b=$("confirmPassword").value;if(a.length<8){$("passwordStatus").textContent="Use at least 8 characters.";return}if(a!==b){$("passwordStatus").textContent="The passwords do not match.";return}$("passwordStatus").textContent="Saving…";try{await ICUAuth.changePassword(a);$("passwordDialog").close();openApp(selected)}catch(err){$("passwordStatus").textContent=err?.message||"Unable to change password."}};
-const requested=new URLSearchParams(location.search).get("barber");if(BARBERS.includes(requested))setTimeout(()=>begin(requested),0);
+
+function chooseBarber(b){
+  if(autoOpenTimer){clearTimeout(autoOpenTimer);autoOpenTimer=null}
+  setBarberUrl(b);
+  begin(b);
+}
+
+document.querySelectorAll("[data-barber]:not([disabled])").forEach(button=>{
+  button.addEventListener("click",()=>chooseBarber(button.dataset.barber));
+});
+$("authCancel").onclick=()=>{
+  ++selectionVersion;selected="";closeDialog("authDialog");
+  try{history.replaceState(null,"",location.pathname)}catch(_){ }
+};
+
+$("authForm").onsubmit=async e=>{
+  e.preventDefault();
+  const barber=selected;
+  if(!BARBERS.includes(barber)){ $("authStatus").textContent="Select your barber again."; return; }
+  $("authStatus").textContent="Signing in…";$("authSubmit").disabled=true;
+  try{
+    const result=await ICUAuth.signIn($("authEmail").value,$("authPassword").value,$("rememberDevice").checked);
+    if(result.identity.role!=="barber"||result.identity.display_name!==barber){
+      await ICUAuth.signOut();
+      throw new Error(`This account is not authorized for ${barber}'s Barber App.`);
+    }
+    pendingIdentity=result.identity;closeDialog("authDialog");
+    if(result.identity.must_change_password){
+      $("newPassword").value="";$("confirmPassword").value="";$("passwordStatus").textContent="";
+      $("passwordDialog").showModal();setTimeout(()=>$("newPassword").focus(),50);
+    }else openApp(barber);
+  }catch(err){$("authStatus").textContent=err?.message||"Unable to sign in."}
+  finally{$("authSubmit").disabled=false}
+};
+
+$("passwordForm").onsubmit=async e=>{
+  e.preventDefault();
+  const barber=selected,a=$("newPassword").value,b=$("confirmPassword").value;
+  if(a.length<8){$("passwordStatus").textContent="Use at least 8 characters.";return}
+  if(a!==b){$("passwordStatus").textContent="The passwords do not match.";return}
+  $("passwordStatus").textContent="Saving…";
+  try{await ICUAuth.changePassword(a);closeDialog("passwordDialog");openApp(barber)}
+  catch(err){$("passwordStatus").textContent=err?.message||"Unable to change password."}
+};
+
+function autoOpenRequestedBarber(){
+  const requested=new URLSearchParams(location.search).get("barber");
+  if(!BARBERS.includes(requested))return;
+  if(autoOpenTimer)clearTimeout(autoOpenTimer);
+  autoOpenTimer=setTimeout(()=>{autoOpenTimer=null;begin(requested)},120);
+}
+
+// Mobile Safari can restore this page from its back/forward cache with an old
+// modal still open. Reset the transient UI on restore, then honor only the
+// barber currently present in the URL.
+window.addEventListener("pageshow",event=>{
+  if(event.persisted){
+    ++selectionVersion;selected="";pendingIdentity=null;
+    closeDialog("authDialog");closeDialog("passwordDialog");
+    $("authStatus").textContent="";$("passwordStatus").textContent="";
+    autoOpenRequestedBarber();
+  }
+});
+
+autoOpenRequestedBarber();
 </script></body></html>
