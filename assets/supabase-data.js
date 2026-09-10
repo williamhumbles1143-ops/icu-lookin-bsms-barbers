@@ -403,8 +403,9 @@ async function socialPublishingCall(action,payload={}){
   let j={};try{j=await r.json()}catch{}if(!r.ok||!j.ok)throw new Error(j.error||"Social publishing request failed.");return j;
 }
 async function socialPublishingStatus(){return socialPublishingCall("status")}
-async function socialConnectMeta(returnUrl){return socialPublishingCall("connect",{returnUrl})}
-async function socialDisconnectMeta(){return socialPublishingCall("disconnect")}
+async function socialConnectPlatform(provider,returnUrl){return socialPublishingCall("connect",{provider,returnUrl})}
+async function socialDisconnectPlatform(provider){return socialPublishingCall("disconnect",{provider})}
+async function socialSelectFacebookPage(pageId){return socialPublishingCall("select_facebook_page",{pageId})}
 async function socialPublishNow(mediaId,platforms,facebookCaption,instagramCaption,hashtags){return socialPublishingCall("publish",{mediaId,platforms,facebookCaption,instagramCaption,hashtags})}
 async function socialPublishJobStatus(jobIds){return socialPublishingCall("job_status",{jobIds})}
 
@@ -415,5 +416,5 @@ async function ownerAdminAction(action,payload={}){
 }
 async function ownerRecoveryAction(barberId,action){await ownerAdminAction(action,{barber_id:barberId});return true}
 async function ownerManageBarber(action,payload={}){return ownerAdminAction(action,payload)}
-window.ICUCloud={client,bootstrap,hydrateStaff,publicState,saveLegacyKey,createBooking,customerLookup,saveCustomerProfile,submitCustomerReview,sendCustomerAppointmentMessage,createGiftCardCloud,lookupGiftCardCloud,sendMessage,markRead,createGroup,socialItems,saveSocialFiles,updateSocial,deleteSocial,saveEditedSocial,clientPortfolio,socialPublishingStatus,socialConnectMeta,socialDisconnectMeta,socialPublishNow,socialPublishJobStatus,uploadOwnerDocuments,downloadOwnerDocument,deleteOwnerDocument,currentIdentity,refreshStaff,markNotificationSeen,ownerRecoveryAction,ownerManageBarber};
+window.ICUCloud={client,bootstrap,hydrateStaff,publicState,saveLegacyKey,createBooking,customerLookup,saveCustomerProfile,submitCustomerReview,sendCustomerAppointmentMessage,createGiftCardCloud,lookupGiftCardCloud,sendMessage,markRead,createGroup,socialItems,saveSocialFiles,updateSocial,deleteSocial,saveEditedSocial,clientPortfolio,socialPublishingStatus,socialConnectPlatform,socialDisconnectPlatform,socialSelectFacebookPage,socialPublishNow,socialPublishJobStatus,uploadOwnerDocuments,downloadOwnerDocument,deleteOwnerDocument,currentIdentity,refreshStaff,markNotificationSeen,ownerRecoveryAction,ownerManageBarber};
 })();
