@@ -396,6 +396,18 @@ async function deleteOwnerDocument(path){
   const {error}=await client.storage.from("icu-owner-documents").remove([path]);if(error)throw error;return true;
 }
 
+const SOCIAL_PUBLISH_EDGE=`${cfg.url}/functions/v1/social-publishing`;
+async function socialPublishingCall(action,payload={}){
+  const {data:{session}}=await client.auth.getSession();if(!session?.access_token)throw new Error("Barber sign-in required.");
+  const r=await fetch(SOCIAL_PUBLISH_EDGE,{method:"POST",headers:{"Content-Type":"application/json",apikey:cfg.publishableKey,Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({action,...payload})});
+  let j={};try{j=await r.json()}catch{}if(!r.ok||!j.ok)throw new Error(j.error||"Social publishing request failed.");return j;
+}
+async function socialPublishingStatus(){return socialPublishingCall("status")}
+async function socialConnectMeta(returnUrl){return socialPublishingCall("connect",{returnUrl})}
+async function socialDisconnectMeta(){return socialPublishingCall("disconnect")}
+async function socialPublishNow(mediaId,platforms,facebookCaption,instagramCaption,hashtags){return socialPublishingCall("publish",{mediaId,platforms,facebookCaption,instagramCaption,hashtags})}
+async function socialPublishJobStatus(jobIds){return socialPublishingCall("job_status",{jobIds})}
+
 async function ownerAdminAction(action,payload={}){
   const {data:{session}}=await client.auth.getSession();if(!session?.access_token)throw new Error("Owner sign-in required.");
   const r=await fetch(`${cfg.url}/functions/v1/owner-account-admin`,{method:"POST",headers:{"Content-Type":"application/json",apikey:cfg.publishableKey,Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({action,...payload})});
@@ -403,5 +415,5 @@ async function ownerAdminAction(action,payload={}){
 }
 async function ownerRecoveryAction(barberId,action){await ownerAdminAction(action,{barber_id:barberId});return true}
 async function ownerManageBarber(action,payload={}){return ownerAdminAction(action,payload)}
-window.ICUCloud={client,bootstrap,hydrateStaff,publicState,saveLegacyKey,createBooking,customerLookup,saveCustomerProfile,submitCustomerReview,sendCustomerAppointmentMessage,createGiftCardCloud,lookupGiftCardCloud,sendMessage,markRead,createGroup,socialItems,saveSocialFiles,updateSocial,deleteSocial,saveEditedSocial,clientPortfolio,uploadOwnerDocuments,downloadOwnerDocument,deleteOwnerDocument,currentIdentity,refreshStaff,markNotificationSeen,ownerRecoveryAction,ownerManageBarber};
+window.ICUCloud={client,bootstrap,hydrateStaff,publicState,saveLegacyKey,createBooking,customerLookup,saveCustomerProfile,submitCustomerReview,sendCustomerAppointmentMessage,createGiftCardCloud,lookupGiftCardCloud,sendMessage,markRead,createGroup,socialItems,saveSocialFiles,updateSocial,deleteSocial,saveEditedSocial,clientPortfolio,socialPublishingStatus,socialConnectMeta,socialDisconnectMeta,socialPublishNow,socialPublishJobStatus,uploadOwnerDocuments,downloadOwnerDocument,deleteOwnerDocument,currentIdentity,refreshStaff,markNotificationSeen,ownerRecoveryAction,ownerManageBarber};
 })();

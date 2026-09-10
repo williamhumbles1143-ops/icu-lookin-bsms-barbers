@@ -611,6 +611,19 @@
       </div>
       <p class="help">Media is stored privately in authenticated Supabase Storage and is available across your signed-in devices.</p>
     </section>
+    <section id="socialPublishingPanel" class="panel social-publishing-panel">
+      <div class="section-heading-row">
+        <div><p class="eyebrow">Direct publishing</p><h2>Facebook + Instagram</h2><p class="help">Connect your professional social accounts once, then publish approved photos and videos directly from this page.</p></div>
+        <button id="refreshSocialPublishing" class="button secondary" type="button">Refresh</button>
+      </div>
+      <div id="socialPublishingStatus" class="social-connection-grid" aria-live="polite"></div>
+      <div class="social-actions">
+        <button id="connectMetaSocial" class="button primary" type="button">Connect Facebook / Instagram</button>
+        <button id="disconnectMetaSocial" class="button danger hidden" type="button">Disconnect</button>
+      </div>
+      <p id="socialPublishingHelp" class="help">Direct publishing uses Meta's official authorization flow. ICU never stores your Facebook or Instagram password.</p>
+      <div class="social-publish-history-wrap"><h3>Recent Publishing Activity</h3><div id="socialPublishHistory" class="queue-list"></div></div>
+    </section>
     <section class="panel filters"><label>Platform<select id="socialPlatformFilter"><option value="">All platforms</option><option>TikTok</option><option>Instagram</option><option>Facebook</option><option>X/Twitter</option><option>YouTube</option></select></label><label>Media type<select id="socialTypeFilter"><option value="">Photos & videos</option><option value="image">Photos</option><option value="video">Videos</option></select></label></section>
     <div id="socialMediaGrid" class="social-media-grid"></div>
   </section>
@@ -642,6 +655,32 @@
       </section>
     </div>
   </section>
+
+  <dialog id="socialPublishDialog" class="social-publish-dialog">
+    <div class="social-publish-shell">
+      <div class="social-editor-header">
+        <div><p class="eyebrow">Publish from ICU</p><h2 id="socialPublishDialogTitle">Publish Social Content</h2><p class="help">Choose where this item should be posted. Captions can be different for Facebook and Instagram.</p></div>
+        <button id="closeSocialPublishDialog" class="button secondary" type="button">Close</button>
+      </div>
+      <div class="social-publish-layout">
+        <section class="social-publish-preview-panel"><div id="socialPublishMediaPreview" class="social-publish-media-preview"></div><p id="socialPublishMediaName" class="help"></p></section>
+        <section class="social-publish-controls">
+          <div id="socialPublishConnectionNotice" class="notice"></div>
+          <div class="social-platform-checks">
+            <label class="check"><input id="socialPublishFacebook" type="checkbox"><span><strong>Facebook Page</strong><br><small id="socialPublishFacebookAccount">Connect an account first.</small></span></label>
+            <label class="check"><input id="socialPublishInstagram" type="checkbox"><span><strong>Instagram</strong><br><small id="socialPublishInstagramAccount">Connect a professional account first.</small></span></label>
+          </div>
+          <label>Facebook caption<textarea id="socialPublishFacebookCaption" rows="4" placeholder="Facebook caption"></textarea></label>
+          <label>Instagram caption<textarea id="socialPublishInstagramCaption" rows="4" maxlength="2200" placeholder="Instagram caption"></textarea></label>
+          <label>Hashtags<input id="socialPublishHashtags" placeholder="#barber #freshcut"></label>
+          <div class="notice"><strong>Consent required.</strong> Confirm Photo / Video Consent on the media card before publishing a client image or video publicly.</div>
+          <div class="social-publish-action-row"><button id="confirmSocialPublish" class="button primary large" type="button">Publish Now</button><button id="shareSocialUsingDevice" class="button secondary large" type="button">Share Using Phone</button></div>
+          <p class="help">Share Using Phone opens your device's share sheet. The destination app controls whether caption text is carried over automatically.</p>
+          <div id="socialPublishResults" class="social-publish-results" aria-live="polite"></div>
+        </section>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="socialImageEditor" class="social-editor-dialog">
     <div class="social-editor-shell">
