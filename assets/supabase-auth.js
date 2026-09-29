@@ -145,3 +145,18 @@
 
   window.ICUAuth={client,signIn,signOut,current,getIdentity,changePassword,changePasswordVerified,requireBarber,requireOwner,setRemember};
 })();
+
+// Individual Barber App calendar enhancement loader.
+(function(){
+  try{
+    const params=new URLSearchParams(location.search);
+    const mode=params.get("app")||sessionStorage.getItem("icuAppMode")||"";
+    if(!/BSMS_APP\.html$/i.test(location.pathname)||mode!=="individual")return;
+    if(document.querySelector('script[data-icu-monthly-calendar]'))return;
+    const script=document.createElement("script");
+    script.src="assets/barber-monthly-calendar.js?v=0.27.3";
+    script.async=true;
+    script.dataset.icuMonthlyCalendar="1";
+    document.head.appendChild(script);
+  }catch(error){console.warn("ICU monthly calendar loader",error)}
+})();
