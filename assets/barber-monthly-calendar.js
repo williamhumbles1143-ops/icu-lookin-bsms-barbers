@@ -110,3 +110,14 @@
   function boot(){const mode=window.__ICU_EARLY_MODE__||new URLSearchParams(location.search).get("app");if(mode!=="individual")return;if(buildUi())return;let n=0;const t=setInterval(()=>{n++;if(buildUi()||n>30)clearInterval(t)},200)}
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
 })();
+
+(function(){
+  try{
+    if(document.querySelector('script[data-icu-clientele-selector]'))return;
+    const script=document.createElement("script");
+    script.src="assets/barber-clientele-selector.js?v=0.27.5";
+    script.async=true;
+    script.dataset.icuClienteleSelector="1";
+    document.head.appendChild(script);
+  }catch(error){console.warn("ICU clientele selector loader",error)}
+})();
